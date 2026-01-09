@@ -15,7 +15,7 @@ from comfy.comfy_types import FileLocator
 from server import PromptServer
 
 from ..cloud import get_uploader
-from ..utils import get_cloud_api_key, process_date_variables, process_node_field_tokens, sanitize_filename
+from ..utils import get_bucket_link, get_cloud_api_key, process_date_variables, process_node_field_tokens, sanitize_filename
 
 
 class SaveAudioExtended:
@@ -37,7 +37,7 @@ class SaveAudioExtended:
         return {
             "required": {
                 "audio": ("AUDIO", {"tooltip": "Audio dict with 'waveform' [B,C,T] and 'sample_rate'."}),
-                "filename_prefix": ("STRING", {"default": "audio/ComfyUI", "tooltip": "Filename prefix. Supports tokens like %date:yyyy-MM-dd%."}),
+                "filename_prefix": ("STRING", {"default": "audio/%date:yyMMdd_hhmmss%", "tooltip": "Filename prefix. Supports tokens like %date:yyyy-MM-dd%."}),
                 "format": (["wav", "flac", "mp3", "opus"], {"default": "flac"}),
             },
             "optional": {
@@ -59,7 +59,7 @@ class SaveAudioExtended:
                     "Supabase Storage",
                     "UploadThing",
                     "S3-Compatible"
-                ], {"default": "AWS S3"}),
+                ], {"default": "Google Drive"}),
                 "bucket_link": ("STRING", {"default": "", "placeholder": "Bucket URL / Conn String"}),
                 "cloud_folder_path": ("STRING", {"default": "outputs"}),
                 "cloud_api_key": ("STRING", {"default": "", "placeholder": "Auth / API key", "tooltip": "Credentials. Supports tokens and JSON. Dropbox accepts JSON with {app_key, app_secret, authorization_code} - refresh token is automatically fetched and cached. Drive/OneDrive also support refresh_token JSON. For UploadThing, use your secret key (sk_...). See docs for provider-specific formats."}),
@@ -86,7 +86,7 @@ class SaveAudioExtended:
         quality = kwargs.get("quality", "128k")
         save_to_cloud = kwargs.get("save_to_cloud", False)
         save_to_local = kwargs.get("save_to_local", True)
-        cloud_provider = kwargs.get("cloud_provider", "AWS S3")
+        cloud_provider = kwargs.get("cloud_provider", "Google Drive")
         bucket_link = kwargs.get("bucket_link", "")
         cloud_api_key = kwargs.get("cloud_api_key", "")
         fmt = (str(format) if format is not None else "").lower()
@@ -104,8 +104,10 @@ class SaveAudioExtended:
         if save_to_cloud:
             if not (cloud_provider and str(cloud_provider).strip()):
                 return "Cloud: 'cloud_provider' is required."
-            if not (bucket_link and bucket_link.strip()):
-                return "Cloud: 'bucket_link' is required."
+            # Check for bucket link in input or environment variable
+            resolved_bucket = get_bucket_link(bucket_link, cloud_provider)
+            if not resolved_bucket.strip():
+                return "Cloud: 'bucket_link' is required (or set COMFYUI_BUCKET_LINK environment variable)."
             # Check for API key in input or environment variable
             resolved_key = get_cloud_api_key(cloud_api_key, cloud_provider)
             if not resolved_key.strip():
@@ -184,7 +186,7 @@ class SaveAudioExtended:
         output_buffer.seek(0)
         return output_buffer.getvalue()
 
-    def save_audio(self, audio, filename_prefix="ComfyUI", format="flac", quality="128k", filename="", custom_filename="", save_to_cloud=False, cloud_provider="AWS S3", bucket_link="", cloud_folder_path="outputs", cloud_api_key="", save_to_local=True, local_folder_path="", prompt=None, extra_pnginfo=None):
+    def save_audio(self, audio, filename_prefix="ComfyUI", format="flac", quality="128k", filename="", custom_filename="", save_to_cloud=False, cloud_provider="Google Drive", bucket_link="", cloud_folder_path="outputs", cloud_api_key="", save_to_local=True, local_folder_path="", prompt=None, extra_pnginfo=None):
         def _notify(kind: str, payload: dict):
             try:
                 PromptServer.instance.send_sync(
@@ -286,7 +288,8 @@ class SaveAudioExtended:
             counter += 1
 
         if save_to_cloud and cloud_items:
-            # Resolve cloud API key (check env var if not provided)
+            # Resolve bucket link and cloud API key (check env vars if not provided)
+            resolved_bucket_link = get_bucket_link(bucket_link, cloud_provider)
             resolved_api_key = get_cloud_api_key(cloud_api_key, cloud_provider)
             try:
                 Uploader = get_uploader(cloud_provider)
@@ -298,9 +301,9 @@ class SaveAudioExtended:
                 def _progress_cb(info: dict):
                     _notify("progress", {"where": "cloud", "current": (info.get("index", 0) + 1), "total": len(cloud_items), "filename": info.get("path"), "provider": cloud_provider})
                 try:
-                    cloud_results = Uploader.upload_many(cloud_items, bucket_link, cloud_folder_path, resolved_api_key, _progress_cb, _bytes_cb)
+                    cloud_results = Uploader.upload_many(cloud_items, resolved_bucket_link, cloud_folder_path, resolved_api_key, _progress_cb, _bytes_cb)
                 except TypeError:
-                    cloud_results = Uploader.upload_many(cloud_items, bucket_link, cloud_folder_path, resolved_api_key, _progress_cb)
+                    cloud_results = Uploader.upload_many(cloud_items, resolved_bucket_link, cloud_folder_path, resolved_api_key, _progress_cb)
             except Exception as e:
                 _notify("error", {"message": str(e)})
             else:

@@ -14,7 +14,7 @@ import folder_paths
 from server import PromptServer
 
 from ..cloud import get_uploader
-from ..utils import get_cloud_api_key, process_date_variables, process_node_field_tokens, sanitize_filename
+from ..utils import get_bucket_link, get_cloud_api_key, process_date_variables, process_node_field_tokens, sanitize_filename
 
 
 class SaveWorkflowExtended:
@@ -60,7 +60,7 @@ class SaveWorkflowExtended:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "filename_prefix": ("STRING", {"default": "workflows/ComfyUI", "tooltip": "Filename prefix. Supports tokens like %date:yyyy-MM-dd% and node field tokens."})
+                "filename_prefix": ("STRING", {"default": "workflows/%date:yyMMdd_hhmmss%", "tooltip": "Filename prefix. Supports tokens like %date:yyyy-MM-dd% and node field tokens."})
             },
             "optional": {
                 "filename": ("STRING", {"default": "", "placeholder": "Filename (optional)", "tooltip": "Exact filename to use. If provided, this will be used directly. If empty, uses UUID-based filename generation. Include file extension (.json)."}),
@@ -79,7 +79,7 @@ class SaveWorkflowExtended:
                     "Supabase Storage",
                     "UploadThing",
                     "S3-Compatible"
-                ], {"default": "AWS S3", "tooltip": "Select the cloud provider. See Description for exact formats."}),
+                ], {"default": "Google Drive", "tooltip": "Select the cloud provider. See Description for exact formats."}),
                 "bucket_link": ("STRING", {"default": "", "placeholder": "Bucket URL / Connection String*", "tooltip": "Destination identifier (varies by provider). Examples: s3://bucket/prefix, gs://bucket, https://account.blob.core.windows.net/container, b2://bucket, drive://folderId, /Dropbox/Path, /OneDrive/Path, ftp://user:pass@host/basepath, or Supabase bucket name. See Description. For UploadThing, leave blank."}),
                 "cloud_folder_path": ("STRING", {"default": "workflows", "placeholder": "Folder path in bucket (e.g. workflows)", "tooltip": "Folder/key prefix under the destination. Created if missing (where applicable)."}),
                 "cloud_api_key": ("STRING", {"default": "", "placeholder": "Auth / API key*", "tooltip": "Credentials. Supports tokens and JSON. For Drive/OneDrive, JSON with refresh_token will auto-refresh the access token. For UploadThing, use your secret key (sk_...). See Description."}),
@@ -108,7 +108,7 @@ class SaveWorkflowExtended:
     def VALIDATE_INPUTS(s, **kwargs):
         save_to_cloud = kwargs.get("save_to_cloud", True)
         save_to_local = kwargs.get("save_to_local", False)
-        cloud_provider = kwargs.get("cloud_provider", "AWS S3")
+        cloud_provider = kwargs.get("cloud_provider", "Google Drive")
         bucket_link = kwargs.get("bucket_link", "")
         cloud_api_key = kwargs.get("cloud_api_key", "")
         if not save_to_cloud and not save_to_local:
@@ -118,8 +118,11 @@ class SaveWorkflowExtended:
                 return "Cloud: 'cloud_provider' is required."
             provider_lower = str(cloud_provider).lower()
             # UploadThing doesn't require bucket_link (should be left blank)
-            if provider_lower != "uploadthing" and not (bucket_link and bucket_link.strip()):
-                return "Cloud: 'bucket_link' is required."
+            if provider_lower != "uploadthing":
+                # Check for bucket link in input or environment variable
+                resolved_bucket = get_bucket_link(bucket_link, cloud_provider)
+                if not resolved_bucket.strip():
+                    return "Cloud: 'bucket_link' is required (or set COMFYUI_BUCKET_LINK environment variable)."
             # FTP doesn't require cloud_api_key (credentials are in bucket_link URL)
             if provider_lower != "ftp":
                 # Check for API key in input or environment variable
@@ -133,7 +136,7 @@ class SaveWorkflowExtended:
         filename="",
         custom_filename="",
         save_to_cloud=True,
-        cloud_provider="AWS S3",
+        cloud_provider="Google Drive",
         bucket_link="",
         cloud_folder_path="workflows",
         cloud_api_key="",
@@ -268,7 +271,8 @@ class SaveWorkflowExtended:
                     pass
 
         if save_to_cloud:
-            # Resolve cloud API key (check env var if not provided)
+            # Resolve bucket link and cloud API key (check env vars if not provided)
+            resolved_bucket_link = get_bucket_link(bucket_link, cloud_provider)
             resolved_api_key = get_cloud_api_key(cloud_api_key, cloud_provider)
             print(f"Uploading workflow to cloud provider: {cloud_provider}")
             try:
@@ -300,12 +304,12 @@ class SaveWorkflowExtended:
 
                 if hasattr(Uploader, "upload_many"):
                     try:
-                        cloud_results = Uploader.upload_many(cloud_items, bucket_link, cloud_folder_path, resolved_api_key, _progress_cb, _bytes_cb)
+                        cloud_results = Uploader.upload_many(cloud_items, resolved_bucket_link, cloud_folder_path, resolved_api_key, _progress_cb, _bytes_cb)
                     except TypeError:
-                        cloud_results = Uploader.upload_many(cloud_items, bucket_link, cloud_folder_path, resolved_api_key, _progress_cb)
+                        cloud_results = Uploader.upload_many(cloud_items, resolved_bucket_link, cloud_folder_path, resolved_api_key, _progress_cb)
                 else:
                     # Fallback to single upload if batch not supported
-                    info = Uploader.upload(workflow_json_bytes, file, bucket_link, cloud_folder_path, resolved_api_key)
+                    info = Uploader.upload(workflow_json_bytes, file, resolved_bucket_link, cloud_folder_path, resolved_api_key)
                     cloud_results = [info]
                     try:
                         PromptServer.instance.send_sync(
