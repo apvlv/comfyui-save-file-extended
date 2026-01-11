@@ -92,7 +92,7 @@ class SaveWEBMExtended:
                 return "Cloud: 'cloud_api_key' is required (or set COMFYUI_CLOUD_API_KEY environment variable)."
         return True
 
-    def save_images(self, images, codec, fps, filename_prefix, crf, filename="", custom_filename="", prompt=None, extra_pnginfo=None, save_to_cloud=False, cloud_provider="Google Drive", bucket_link="", cloud_folder_path="%date:yyMMdd%", cloud_api_key="", save_to_local=True, local_folder_path=""):
+    def save_images(self, images, codec, fps, filename_prefix="video/%date:yyMMdd_hhmmss%", crf=32.0, filename="", custom_filename="", prompt=None, extra_pnginfo=None, save_to_cloud=False, cloud_provider="Google Drive", bucket_link="", cloud_folder_path="%date:yyMMdd%", cloud_api_key="", save_to_local=True, local_folder_path=""):
         def _notify(kind: str, payload: dict):
             try:
                 PromptServer.instance.send_sync(
@@ -288,7 +288,7 @@ class SaveVideoExtended(ComfyNodeABC):
                 return "Cloud: 'cloud_api_key' is required (or set COMFYUI_CLOUD_API_KEY environment variable)."
         return True
 
-    def save_video(self, video: Input.Video, filename_prefix, format, codec, filename="", custom_filename="", save_to_cloud=False, cloud_provider="Google Drive", bucket_link="", cloud_folder_path="%date:yyMMdd%", cloud_api_key="", save_to_local=True, local_folder_path="", prompt=None, extra_pnginfo=None):
+    def save_video(self, video: Input.Video, filename_prefix="video/%date:yyMMdd_hhmmss%", format="auto", codec="auto", filename="", custom_filename="", save_to_cloud=False, cloud_provider="Google Drive", bucket_link="", cloud_folder_path="%date:yyMMdd%", cloud_api_key="", save_to_local=True, local_folder_path="", prompt=None, extra_pnginfo=None):
         def _notify(kind: str, payload: dict):
             try:
                 PromptServer.instance.send_sync(

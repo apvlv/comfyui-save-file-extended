@@ -130,7 +130,7 @@ class SaveImageExtended:
 
     def save_images_extended(self,
         images,
-        filename_prefix="ComfyUI",
+        filename_prefix="%date:yyMMdd_hhmmss%",
         filename="",
         custom_filename="",
         save_to_cloud=True,

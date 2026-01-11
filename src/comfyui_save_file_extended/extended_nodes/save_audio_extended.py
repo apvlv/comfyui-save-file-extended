@@ -186,7 +186,7 @@ class SaveAudioExtended:
         output_buffer.seek(0)
         return output_buffer.getvalue()
 
-    def save_audio(self, audio, filename_prefix="ComfyUI", format="flac", quality="128k", filename="", custom_filename="", save_to_cloud=False, cloud_provider="Google Drive", bucket_link="", cloud_folder_path="%date:yyMMdd%", cloud_api_key="", save_to_local=True, local_folder_path="", prompt=None, extra_pnginfo=None):
+    def save_audio(self, audio, filename_prefix="audio/%date:yyMMdd_hhmmss%", format="flac", quality="128k", filename="", custom_filename="", save_to_cloud=False, cloud_provider="Google Drive", bucket_link="", cloud_folder_path="%date:yyMMdd%", cloud_api_key="", save_to_local=True, local_folder_path="", prompt=None, extra_pnginfo=None):
         def _notify(kind: str, payload: dict):
             try:
                 PromptServer.instance.send_sync(

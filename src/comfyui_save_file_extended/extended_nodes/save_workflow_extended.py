@@ -132,7 +132,7 @@ class SaveWorkflowExtended:
         return True
 
     def save_workflow_extended(self,
-        filename_prefix="workflows/ComfyUI",
+        filename_prefix="workflows/%date:yyMMdd_hhmmss%",
         filename="",
         custom_filename="",
         save_to_cloud=True,
